@@ -1,0 +1,207 @@
+%{
+#include "MmeTuringDocument.h"
+#include "MmeTuringParser.hpp"
+#define YYSTYPE MMETU_STYPE
+#define YYLTYPE MMETU_LTYPE
+
+using aluop = mme::tu104::AluOp;
+
+namespace
+{
+	struct Keyword
+	{
+		int token;
+		int32_t value;
+	};
+
+	constexpr int32_t BranchFalse = 0x100;
+
+	const std::map<std::string, Keyword> keywords
+	{
+		{ "add",      { TK_ALU2,    int32_t(aluop::Add)                  } },
+		{ "addc",     { TK_ALUC,    int32_t(aluop::AddCarry)             } },
+		{ "and",      { TK_ALU2,    int32_t(aluop::And)                  } },
+		{ "beq",      { TK_BRANCH,  int32_t(aluop::BranchEqual)          } },
+		{ "bge",      { TK_BRANCH,  int32_t(aluop::BranchLessThan)          | BranchFalse } },
+		{ "bgeu",     { TK_BRANCH,  int32_t(aluop::BranchLessThanUnsigned)  | BranchFalse } },
+		{ "bgt",      { TK_BRANCH,  int32_t(aluop::BranchLessEqual)         | BranchFalse } },
+		{ "bgtu",     { TK_BRANCH,  int32_t(aluop::BranchLessEqualUnsigned) | BranchFalse } },
+		{ "ble",      { TK_BRANCH,  int32_t(aluop::BranchLessEqual)      } },
+		{ "bleu",     { TK_BRANCH,  int32_t(aluop::BranchLessEqualUnsigned) } },
+		{ "blt",      { TK_BRANCH,  int32_t(aluop::BranchLessThan)       } },
+		{ "bltu",     { TK_BRANCH,  int32_t(aluop::BranchLessThanUnsigned) } },
+		{ "bne",      { TK_BRANCH,  int32_t(aluop::BranchEqual)             | BranchFalse } },
+		{ "clz",      { TK_ALU1,    int32_t(aluop::CountLeadingZeros)    } },
+		{ "dread",    { TK_ALU1,    int32_t(aluop::DramRead)             } },
+		{ "dwrite",   { TK_ALU2,    int32_t(aluop::DramWrite)            } },
+		{ "emit",     { KW_EMIT,    0 } },
+		{ "exit",     { KW_EXIT,    0 } },
+		{ "extended", { TK_ALU2,    int32_t(aluop::Extended)             } },
+		{ "ip",       { KW_IP,      0 } },
+		{ "jal",      { KW_JAL,     int32_t(aluop::JumpAndLink)          } },
+		{ "loop",     { KW_LOOP,    int32_t(aluop::Loop)                 } },
+		{ "merge",    { KW_MERGE,   int32_t(aluop::Merge)                } },
+		{ "mthd",     { KW_MTHD,    0 } },
+		{ "mul",      { TK_ALU2,    int32_t(aluop::Mul)                  } },
+		{ "mulh",     { KW_MULH,    int32_t(aluop::MulHigh)              } },
+		{ "mulu",     { TK_ALU2,    int32_t(aluop::MulUnsigned)          } },
+		{ "nand",     { TK_ALU2,    int32_t(aluop::Nand)                 } },
+		{ "nop",      { KW_NOP,     0 } },
+		{ "or",       { TK_ALU2,    int32_t(aluop::Or)                   } },
+		{ "pred",     { KW_PRED,    0 } },
+		{ "seq",      { TK_ALU2,    int32_t(aluop::SetEqual)             } },
+		{ "sle",      { TK_ALU2,    int32_t(aluop::SetLessEqual)         } },
+		{ "sleu",     { TK_ALU2,    int32_t(aluop::SetLessEqualUnsigned) } },
+		{ "sll",      { TK_ALU2,    int32_t(aluop::ShiftLeft)            } },
+		{ "slt",      { TK_ALU2,    int32_t(aluop::SetLessThan)          } },
+		{ "sltu",     { TK_ALU2,    int32_t(aluop::SetLessThanUnsigned)  } },
+		{ "sra",      { TK_ALU2,    int32_t(aluop::ShiftRightArith)      } },
+		{ "srl",      { TK_ALU2,    int32_t(aluop::ShiftRight)           } },
+		{ "state",    { KW_STATE,   int32_t(aluop::State)                } },
+		{ "sub",      { TK_ALU2,    int32_t(aluop::Sub)                  } },
+		{ "subb",     { TK_ALUC,    int32_t(aluop::SubBorrow)            } },
+		{ "xor",      { TK_ALU2,    int32_t(aluop::Xor)                  } },
+	};
+}
+
+#define YY_USER_ACTION                          \
+    yylloc->first_line   = yylloc->last_line;   \
+    yylloc->first_column = yylloc->last_column; \
+    for (int i = 0; yytext[i]; i++) {           \
+        if (yytext[i] == '\n') {                \
+            yylloc->last_line++;                \
+            yylloc->last_column = 1;            \
+        } else                                  \
+            yylloc->last_column++;              \
+    }
+
+%}
+
+%option prefix="mmetu_"
+%option warn nodefault
+%option noyywrap nounput
+%option reentrant bison-bridge bison-locations
+
+%x COMMENT
+
+decdigit  [0-9]
+hexprefix 0[xX]
+hexdigit  [0-9a-fA-F]
+
+%%
+
+[ \t]+ {
+	// Nothing
+}
+
+<INITIAL>{
+"#[" {
+	BEGIN(COMMENT);
+}
+}
+
+<COMMENT>{
+"#]" {
+	BEGIN(INITIAL);
+}
+[^#]+ {
+	// Eat comment in chunks
+}
+"#" {
+	// Eat the lone hash
+}
+}
+
+#[^\r\n]* {
+	// Nothing
+}
+
+;[^\r\n]* {
+	// Disassembler-style annotation
+}
+
+"/*"([^*]|\*+[^*/])*\*+"/" {
+	// C-style comment, as printed by the disassembler
+}
+
+[\r\n]+ {
+	return '\n';
+}
+
+"::" {
+	return TK_DOUBLECOLON;
+}
+
+"<<" {
+	return TK_LSL;
+}
+
+">>>" {
+	return TK_LSR;
+}
+
+">>" {
+	return TK_ASR;
+}
+
+"%equ" {
+	return DIR_EQU;
+}
+
+{hexprefix}{hexdigit}+ {
+	yylval->value = int32_t(strtoul(yytext, NULL, 0));
+	return VALUE;
+}
+
+{decdigit}+ {
+	yylval->value = int32_t(strtoul(yytext, NULL, 0));
+	return VALUE;
+}
+
+"$"[rR]{decdigit}+ {
+	yylval->value = atoi(&yytext[2]);
+	return TK_GPR;
+}
+
+"$"[zZ][eE][rR][oO] {
+	return TK_ZERO;
+}
+
+"$"[lL][oO][aA][dD][01] {
+	yylval->value = yytext[5] - '0';
+	return TK_LOAD;
+}
+
+"$"[aA][lL][uU][01] {
+	yylval->value = yytext[4] - '0';
+	return TK_ALU;
+}
+
+"$"([cC][aA][rR][rR][yY]|[bB][oO][rR][rR][oO][wW]) {
+	return TK_CARRY;
+}
+
+"."[a-zA-Z_][a-zA-Z0-9_]* {
+	// Local labels can't collide with keywords
+	yylval->str = new std::string(&yytext[1]);
+	return TK_LOCAL;
+}
+
+[a-zA-Z_][a-zA-Z0-9_]* {
+	std::string kw = yytext;
+	std::transform(kw.begin(), kw.end(), kw.begin(), [](char ch) -> char {
+		return ch >= 'A' && ch <= 'Z' ? ch - 'A' + 'a' : ch;
+	});
+	auto kit = keywords.find(kw);
+	if (kit != keywords.end())
+	{
+		yylval->value = kit->second.value;
+		return kit->second.token;
+	}
+	yylval->str = new std::string(yytext);
+	return IDENTIFIER;
+}
+
+. {
+	return yytext[0];
+}

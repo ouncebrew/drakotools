@@ -4,9 +4,12 @@ inc = include_directories('.')
 dekomme_files = files(
 	'dekomme.cpp',
 	'MmeDocument.cpp',
+	'MmeTuringDocument.cpp',
 )
 dekomme_files += bison.process('MmeParser.ypp')
 dekomme_files += flex.process('MmeLexer.lpp')
+dekomme_files += bison.process('MmeTuringParser.ypp')
+dekomme_files += flex.process('MmeTuringLexer.lpp')
 
 dekodef_files = files(
 	'dekodef.cpp',

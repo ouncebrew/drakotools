@@ -178,3 +178,104 @@ Operations (sorted by format, not including branches)
     eslr rA bB:rB size
     esli bA:rA rB size
     ei bA:rA bB:rB size
+
+==============================================================================
+Turing dialect (dekomme --isa=turing)
+==============================================================================
+
+Comments
+
+  # This is a comment
+  #[
+    block comment (#[ must end its line)
+  #]
+  ; annotation
+  /* annotation */
+
+Labels and directives
+
+  Name::     (exported macro)
+  Name:      (label)
+  .name      (local label)
+  %equ identifier expression
+
+Registers
+
+  $r0 .. $r23
+  $zero
+  $load0 $load1    (next macro parameter)
+  $alu0 $alu1      (ALU result of the same instruction)
+
+Immediates
+
+  imm        (number, %equ name, name[index], -imm, ~imm or (expr))
+
+Instruction forms
+
+  {component}
+  {
+    {component}
+    ...
+  }
+  *{instruction}   (END_NEXT: the next instruction is the last one)
+  pred MODE src {instruction}   (MODE = T/F/U for alu0 alu1 out0 out1)
+  nop
+  exit = *nop
+
+ALU components
+
+  [dst =] OP operands
+  dst = $rN, $aluN, "$aluN, $rN", "$rN, $aluN" or $zero
+
+  ADD a b
+  SUB a b
+  MUL a b
+  MULU a b
+  AND a b
+  NAND a b
+  OR a b
+  XOR a b
+  SLL a b
+  SRL a b
+  SRA a b
+  SLT a b
+  SLTU a b
+  SLE a b
+  SLEU a b
+  SEQ a b
+  CLZ a
+  ADDC a b         (alu1, after ADD in alu0)
+  SUBB a b         (alu1, after SUB in alu0)
+  MULH             (alu1, after MUL/MULU in alu0)
+  MERGE a b (dst_pos=D, bits=N, src_pos=S)
+  MERGE a b (D, N, S)
+  STATE a [+ b]
+  EXTENDED a b
+  DREAD a
+  DWRITE a b
+
+Control flow (alu0)
+
+  BLT a b target
+  BLTU a b target
+  BLE a b target
+  BLEU a b target
+  BEQ a b target
+  BGE a b target = BLT a b target (branch if false)
+  BGEU a b target = BLTU a b target (branch if false)
+  BGT a b target = BLE a b target (branch if false)
+  BGTU a b target = BLEU a b target (branch if false)
+  BNE a b target = BEQ a b target (branch if false)
+  JAL target
+  LOOP count target
+
+  target = Label, .local, EXIT or ip N
+
+Output components
+
+  mthd(addr, incr=N)
+  mthd(value)      (value = incr<<12 | addr)
+  mthd($aluN)
+  mthd($loadN)
+  emit(src)
+  emit src         (src = $aluN, $loadN or imm)

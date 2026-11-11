@@ -1,0 +1,344 @@
+%{
+#include "MmeTuringDocument.h"
+#include "MmeTuringParser.hpp"
+#define yyscan_t mmetu_scan_t
+#define YYSTYPE MMETU_STYPE
+#define YYLTYPE MMETU_LTYPE
+#include "MmeTuringLexer.hpp"
+
+using namespace mme::tu104;
+
+void mmetu_error(MMETU_LTYPE *llocp, void* scanner, MmeTuringDocument& doc, char const* curFile, char const *msg);
+
+#define print_error(...) yyerror(&yylloc, scanner, doc, curFile, __VA_ARGS__);
+#define fail_if_not_ok(...) do { \
+	if (!ok) { \
+		print_error(__VA_ARGS__); \
+		return -1; \
+	} \
+} while(0)
+#define fail_if_error(err) do { \
+	if (err) { \
+		print_error(err); \
+		return -1; \
+	} \
+} while(0)
+
+namespace
+{
+	MmeTuringOperand MakeReg(int32_t reg)
+	{
+		return MmeTuringOperand{ false, reg };
+	}
+
+	MmeTuringOperand MakeImm(int32_t imm)
+	{
+		return MmeTuringOperand{ true, imm };
+	}
+
+	MmeTuringAlu* MakeAlu(int32_t op, MmeTuringOperand src0, MmeTuringOperand src1)
+	{
+		MmeTuringAlu* alu = new MmeTuringAlu(AluOp(op));
+		alu->src[0] = src0;
+		alu->src[1] = src1;
+		return alu;
+	}
+
+	// LHS encoding: bits 0..7 = destination register, bits 8.. = forced ALU slot + 1
+	constexpr int32_t MakeLhs(int32_t slot, int32_t dst)
+	{
+		return ((slot+1) << 8) | dst;
+	}
+
+	// Named MERGE parameter encoding: bits 0..15 = value, bits 16.. = parameter index
+	enum { MergeDstPos, MergeBits, MergeSrcPos };
+}
+
+%}
+
+%code requires {
+#define MMETU_LTYPE mmetu_ltype
+#define MMETU_LTYPE_IS_TRIVIAL 1
+typedef struct mmetu_ltype mmetu_ltype;
+struct mmetu_ltype
+{
+	int first_line, first_column;
+	int last_line, last_column;
+	int split_nest;
+};
+}
+
+%verbose
+%define api.prefix  {mmetu_}
+%define api.pure    full
+%define parse.error verbose
+%param              {void* scanner}
+%parse-param        {MmeTuringDocument& doc}
+%parse-param        {char const* curFile}
+%locations
+
+%union {
+	int32_t                   value;
+	std::string              *str;
+	MmeTuringOperand          operand;
+	MmeTuringAlu             *alu;
+	MmeTuringTarget          *target;
+}
+
+%token               KW_EMIT KW_EXIT KW_IP KW_MTHD KW_NOP KW_PRED
+%token               TK_DOUBLECOLON TK_LSL TK_LSR TK_ASR TK_ZERO TK_CARRY
+%token               DIR_EQU
+%token<value>        VALUE TK_GPR TK_LOAD TK_ALU
+%token<value>        TK_ALU1 TK_ALU2 TK_ALUC TK_BRANCH KW_JAL KW_LOOP KW_MERGE KW_MULH KW_STATE
+%token<str>          IDENTIFIER TK_LOCAL
+%type<value>         EXPR PRIMARY GPR LHS OUT_REG PRED_REG MERGE_PARAMS MERGE_NAMED
+%type<operand>       SRC
+%type<alu>           ALU_OP
+%type<target>        TARGET
+
+%left  '\''
+%left  '|'
+%left  '^'
+%left  '&'
+%left  TK_LSL TK_LSR TK_ASR
+%left  '+' '-'
+%left  '*' '/' '%'
+%right UPLUS UMINUS UBNOT
+%left '[' '('
+
+%destructor { } <value> <operand>
+%destructor { delete $$; } <*>
+
+%%
+
+DOCUMENT: LINE | DOCUMENT '\n' LINE;
+
+LINE: %empty |
+DIR_EQU IDENTIFIER EXPR
+{
+	bool ok = doc.VisitEqu(std::move(*$2), $3);
+	delete $2;
+	fail_if_not_ok("duplicate %equ");
+} |
+LABEL STATEMENT |
+LABEL |
+STATEMENT;
+
+LABEL:
+TK_LOCAL
+{
+	bool ok = doc.VisitLocalLabel(std::move(*$1));
+	delete $1;
+	fail_if_not_ok("duplicate local label");
+} |
+IDENTIFIER ':'
+{
+	bool ok = doc.VisitLabel(std::move(*$1), false);
+	delete $1;
+	fail_if_not_ok("duplicate label");
+} |
+IDENTIFIER TK_DOUBLECOLON
+{
+	bool ok = doc.VisitLabel(std::move(*$1), true);
+	delete $1;
+	fail_if_not_ok("duplicate label");
+};
+
+STATEMENT:
+	INSTRUCTION { const char* err = doc.VisitInstruction(false); fail_if_error(err); } |
+	'*' INSTRUCTION { const char* err = doc.VisitInstruction(true); fail_if_error(err); } |
+	KW_EXIT { const char* err = doc.VisitInstruction(true); fail_if_error(err); };
+
+INSTRUCTION:
+	KW_NOP |
+	COMPONENT |
+	BLOCK |
+	PRED_HEAD COMPONENT |
+	PRED_HEAD BLOCK;
+
+PRED_HEAD:
+	KW_PRED IDENTIFIER PRED_REG
+	{
+		const char* err = doc.VisitPredicate(std::move(*$2), $3);
+		delete $2;
+		fail_if_error(err);
+	};
+
+PRED_REG:
+	GPR { $$ = $1; } |
+	TK_ZERO { $$ = Zero; } |
+	TK_LOAD { $$ = Load0 + $1; };
+
+BLOCK: '{' BLOCK_ITEMS '}';
+
+BLOCK_ITEMS: BLOCK_ITEM | BLOCK_ITEMS '\n' BLOCK_ITEM;
+
+BLOCK_ITEM: %empty | COMPONENT;
+
+COMPONENT:
+	ALU_OP { const char* err = doc.VisitAlu($1); fail_if_error(err); } |
+	LHS '=' ALU_OP
+	{
+		$3->slot = ($1 >> 8) - 1;
+		$3->dst = $1 & 0xFF;
+		const char* err = doc.VisitAlu($3);
+		fail_if_error(err);
+	} |
+	KW_MTHD '(' OUT_REG ')' { doc.VisitOut(true, MakeReg($3)); } |
+	KW_MTHD '(' EXPR ')'
+	{
+		bool ok = uint32_t($3) <= 0xFFFF;
+		fail_if_not_ok("method value out of range (16 bits: incr[15:12] addr[11:0])");
+		doc.VisitOut(true, MakeImm($3));
+	} |
+	KW_MTHD '(' EXPR ',' IDENTIFIER '=' EXPR ')'
+	{
+		bool ok = *$5 == "incr";
+		delete $5;
+		fail_if_not_ok("expected incr=");
+		ok = uint32_t($3) <= 0xFFF;
+		fail_if_not_ok("method address out of range (12 bits)");
+		ok = uint32_t($7) <= 0xF;
+		fail_if_not_ok("method increment out of range (4 bits)");
+		doc.VisitOut(true, MakeImm($3 | ($7 << 12)));
+	} |
+	KW_EMIT '(' OUT_REG ')' { doc.VisitOut(false, MakeReg($3)); } |
+	KW_EMIT OUT_REG { doc.VisitOut(false, MakeReg($2)); } |
+	KW_EMIT EXPR { doc.VisitOut(false, MakeImm($2)); };
+
+OUT_REG:
+	TK_ALU { $$ = int32_t(OutOp::Alu0) + $1; } |
+	TK_LOAD { $$ = int32_t(OutOp::Load0) + $1; };
+
+LHS:
+	TK_ZERO { $$ = MakeLhs(-1, Zero); } |
+	GPR { $$ = MakeLhs(-1, $1); } |
+	TK_ALU { $$ = MakeLhs($1, Zero); } |
+	TK_ALU ',' GPR { $$ = MakeLhs($1, $3); } |
+	GPR ',' TK_ALU { $$ = MakeLhs($3, $1); };
+
+GPR:
+	TK_GPR
+	{
+		bool ok = $1 < NumGprs;
+		fail_if_not_ok("register out of range ($r0..$r23)");
+		$$ = $1;
+	};
+
+ALU_OP:
+	TK_ALU2 SRC SRC { $$ = MakeAlu($1, $2, $3); } |
+	TK_ALU1 SRC { $$ = MakeAlu($1, $2, MakeReg(Zero)); } |
+	TK_ALUC SRC SRC { $$ = MakeAlu($1, $2, $3); } |
+	TK_ALUC SRC SRC TK_CARRY { $$ = MakeAlu($1, $2, $3); } |
+	KW_MULH { $$ = MakeAlu($1, MakeReg(Zero), MakeReg(Zero)); } |
+	KW_MULH TK_ALU
+	{
+		bool ok = $2 == 0;
+		fail_if_not_ok("MULH reads the high half of $alu0");
+		$$ = MakeAlu($1, MakeReg(Zero), MakeReg(Zero));
+	} |
+	KW_MERGE SRC SRC '(' MERGE_PARAMS ')'
+	{
+		$$ = MakeAlu($1, $2, $3);
+		$$->implicitImm = $5;
+	} |
+	KW_STATE SRC { $$ = MakeAlu($1, $2, MakeReg(Zero)); } |
+	KW_STATE SRC '+' SRC { $$ = MakeAlu($1, $2, $4); } |
+	KW_LOOP SRC TARGET
+	{
+		$$ = MakeAlu($1, $2, MakeReg(Zero));
+		$$->target.reset($3);
+	} |
+	KW_JAL TARGET
+	{
+		$$ = MakeAlu($1, MakeReg(Zero), MakeReg(Zero));
+		$$->target.reset($2);
+	} |
+	TK_BRANCH SRC SRC TARGET
+	{
+		$$ = MakeAlu($1 & 0xFF, $2, $3);
+		$$->implicitImm = ($1 & 0x100) ? 0 : BranchExpectBit;
+		$$->target.reset($4);
+	};
+
+MERGE_PARAMS:
+	EXPR ',' EXPR ',' EXPR
+	{
+		bool ok = uint32_t($1) <= 0x3F && uint32_t($3) <= 0x1F && uint32_t($5) <= 0x1F;
+		fail_if_not_ok("MERGE parameter out of range (dst_pos 0..63, bits 0..31, src_pos 0..31)");
+		$$ = MakeMergeImm($1, $3, $5);
+	} |
+	MERGE_NAMED ',' MERGE_NAMED ',' MERGE_NAMED
+	{
+		int32_t params[3] = { -1, -1, -1 };
+		params[$1 >> 16] = $1 & 0xFFFF;
+		params[$3 >> 16] = $3 & 0xFFFF;
+		params[$5 >> 16] = $5 & 0xFFFF;
+		bool ok = params[0] >= 0 && params[1] >= 0 && params[2] >= 0;
+		fail_if_not_ok("MERGE needs each of dst_pos, bits and src_pos exactly once");
+		$$ = MakeMergeImm(params[MergeDstPos], params[MergeBits], params[MergeSrcPos]);
+	};
+
+MERGE_NAMED:
+	IDENTIFIER '=' EXPR
+	{
+		int32_t idx = *$1 == "dst_pos" ? MergeDstPos : *$1 == "bits" ? MergeBits : *$1 == "src_pos" ? MergeSrcPos : -1;
+		delete $1;
+		bool ok = idx >= 0;
+		fail_if_not_ok("unknown MERGE parameter (expected dst_pos, bits or src_pos)");
+		ok = uint32_t($3) <= (idx == MergeDstPos ? 0x3Fu : 0x1Fu);
+		fail_if_not_ok("MERGE parameter out of range (dst_pos 0..63, bits 0..31, src_pos 0..31)");
+		$$ = (idx << 16) | $3;
+	};
+
+TARGET:
+	IDENTIFIER { $$ = new MmeTuringTarget(MmeTuringTarget::Label, std::move(*$1)); delete $1; } |
+	TK_LOCAL { $$ = new MmeTuringTarget(MmeTuringTarget::LocalLabel, std::move(*$1)); delete $1; } |
+	KW_EXIT { $$ = new MmeTuringTarget(MmeTuringTarget::Exit); } |
+	KW_IP EXPR { $$ = new MmeTuringTarget(MmeTuringTarget::Ip, std::string(), $2); };
+
+SRC:
+	GPR { $$ = MakeReg($1); } |
+	TK_ZERO { $$ = MakeReg(Zero); } |
+	TK_LOAD { $$ = MakeReg(Load0 + $1); } |
+	PRIMARY { $$ = MakeImm($1); };
+
+PRIMARY:
+VALUE                    { $$ = $1;       } |
+IDENTIFIER
+{
+	bool ok = doc.VisitExprIdent(std::move(*$1), $$);
+	delete $1;
+	fail_if_not_ok("unknown identifier");
+} |
+'(' EXPR ')'             { $$ = $2;       } |
+'+' PRIMARY %prec UPLUS  { $$ = $2;       } |
+'-' PRIMARY %prec UMINUS { $$ = -$2;      } |
+'~' PRIMARY %prec UBNOT  { $$ = ~$2;      } |
+PRIMARY '[' EXPR ']'     { $$ = $1 + $3;  };
+
+EXPR:
+VALUE                 { $$ = $1;       } |
+IDENTIFIER
+{
+	bool ok = doc.VisitExprIdent(std::move(*$1), $$);
+	delete $1;
+	fail_if_not_ok("unknown identifier");
+} |
+EXPR '\'' EXPR        { $$ = ($1 & 0xFFF) | (($3 & 0x3F) << 12); } |
+EXPR '|' EXPR         { $$ = $1 | $3;  } |
+EXPR '^' EXPR         { $$ = $1 ^ $3;  } |
+EXPR '&' EXPR         { $$ = $1 & $3;  } |
+EXPR TK_LSL EXPR      { $$ = $1 << $3; } |
+EXPR TK_LSR EXPR      { $$ = uint32_t($1) >> $3; } |
+EXPR TK_ASR EXPR      { $$ =  int32_t($1) >> $3; } |
+EXPR '+' EXPR         { $$ = $1 + $3;  } |
+EXPR '-' EXPR         { $$ = $1 - $3;  } |
+EXPR '*' EXPR         { $$ = $1 * $3;  } |
+EXPR '/' EXPR         { $$ = $1 / $3;  } |
+EXPR '%' EXPR         { $$ = $1 % $3;  } |
+'+' EXPR %prec UPLUS  { $$ = $2;       } |
+'-' EXPR %prec UMINUS { $$ = -$2;      } |
+'~' EXPR %prec UBNOT  { $$ = ~$2;      } |
+EXPR '[' EXPR ']'     { $$ = $1 + $3;  } |
+'(' EXPR ')'          { $$ = $2;       };
