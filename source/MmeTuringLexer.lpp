@@ -79,7 +79,7 @@ namespace
 
 %option prefix="mmetu_"
 %option warn nodefault
-%option noyywrap nounput
+%option noyywrap nounput never-interactive nounistd
 %option reentrant bison-bridge bison-locations
 
 %x COMMENT

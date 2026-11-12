@@ -7,7 +7,7 @@ static int usage(const char* prog)
 		"Usage: %s [options] file\n"
 		"Options:\n"
 		"  -h, --header=<file>  Specifies the name of the C++ header file (.h) to generate\n"
-		"  -m, --mme=<file>     Specifies the name of the dekomme file (.mme) to generate\n"
+		"  -m, --mme=<file>     Specifies the name of the drakomme file (.mme) to generate\n"
 		"  -v, --version        Displays version information\n"
 		, prog);
 	return EXIT_FAILURE;

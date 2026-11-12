@@ -1,4 +1,4 @@
-project('dekotools', 'cpp',
+project('drakotools', 'cpp',
 	version: '1.0.0',
 	default_options: [ 'buildtype=release', 'strip=true', 'b_ndebug=if-release', 'cpp_std=c++14' ],
 )
@@ -26,16 +26,16 @@ endforeach
 
 subdir('source')
 
-dekomme = executable(
-	'dekomme',
-	dekomme_files,
+drakomme = executable(
+	'drakomme',
+	drakomme_files,
 	include_directories: inc,
 	install: true,
 )
 
-dekodef = executable(
-	'dekodef',
-	dekodef_files,
+drakodef = executable(
+	'drakodef',
+	drakodef_files,
 	include_directories: inc,
 	install: true,
 )
