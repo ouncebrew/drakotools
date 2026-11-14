@@ -180,7 +180,7 @@ Operations (sorted by format, not including branches)
     ei bA:rA bB:rB size
 
 ==============================================================================
-Turing dialect (dekomme --isa=turing)
+Turing dialect (drakomme --isa=turing)
 ==============================================================================
 
 Comments

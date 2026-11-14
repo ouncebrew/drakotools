@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Regression test for dekomme's Fermi mode.
+"""Regression test for drakomme's Fermi mode.
 
-Usage: fermi_regression.py --baseline PATH [--dekomme PATH] [--dekodef PATH]
+Usage: fermi_regression.py --baseline PATH [--drakomme PATH] [--drakodef PATH]
                            [--maxwell DIR]
 """
 import argparse
@@ -23,15 +23,15 @@ def run(cmd):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--baseline", required=True, help="dekomme built before the changes")
-    ap.add_argument("--dekomme", default=os.path.join(ROOT, "build", "dekomme"))
-    ap.add_argument("--dekodef", default=os.path.join(ROOT, "build", "dekodef"))
+    ap.add_argument("--baseline", required=True, help="drakomme built before the changes")
+    ap.add_argument("--drakomme", default=os.path.join(ROOT, "build", "drakomme"))
+    ap.add_argument("--drakodef", default=os.path.join(ROOT, "build", "drakodef"))
     ap.add_argument("--maxwell", default="/home/breadloaf/CLionProjects/ounce/drako3d/source/maxwell")
     args = ap.parse_args()
 
     work = tempfile.mkdtemp(prefix="fermireg-")
     engine = os.path.join(work, "engine_3d.mme")
-    run([args.dekodef, "-h", os.path.join(work, "engine_3d.h"), "-m", engine,
+    run([args.drakodef, "-h", os.path.join(work, "engine_3d.h"), "-m", engine,
          os.path.join(args.maxwell, "engine_3d.def")])
     macros = sorted(glob.glob(os.path.join(args.maxwell, "*.mme")),
                     key=os.path.basename)
@@ -52,7 +52,7 @@ def main():
             ref = os.path.join(work, "ref.h")
             out = os.path.join(work, "out.h")
             run([args.baseline] + baseopts + ["-o", ref] + inputs)
-            run([args.dekomme] + newopts + ["-o", out] + inputs)
+            run([args.drakomme] + newopts + ["-o", out] + inputs)
             same = open(ref, "rb").read() == open(out, "rb").read()
             size = os.path.getsize(ref)
             print("%-55s %-17s %s (%d bytes)" % (title, vname, "identical" if same else "DIFFERS", size))

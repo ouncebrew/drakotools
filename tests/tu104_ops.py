@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Encoding test for the parts of the tu104 ISA
 
-Usage: tu104_ops.py [--dekomme PATH]
+Usage: tu104_ops.py [--drakomme PATH]
 """
 import argparse
 import os
@@ -136,12 +136,12 @@ ERRORS = [
 ]
 
 
-def assemble(dekomme, src, work, name):
+def assemble(drakomme, src, work, name):
     path = os.path.join(work, name + ".mme")
     out = os.path.join(work, name + ".bin")
     with open(path, "w") as f:
         f.write(src + "\n")
-    res = subprocess.run([dekomme, "--isa=turing", "--binary", "-o", out, path],
+    res = subprocess.run([drakomme, "--isa=turing", "--binary", "-o", out, path],
                          capture_output=True, text=True)
     if res.returncode != 0:
         return None, res.stderr
@@ -151,13 +151,13 @@ def assemble(dekomme, src, work, name):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--dekomme", default=os.path.join(HERE, "..", "build", "dekomme"))
+    ap.add_argument("--drakomme", default=os.path.join(HERE, "..", "build", "drakomme"))
     args = ap.parse_args()
     work = tempfile.mkdtemp(prefix="tu104ops-")
     fails = 0
 
     for n, (src, expect) in enumerate(CASES):
-        words, err = assemble(args.dekomme, src, work, "case%d" % n)
+        words, err = assemble(args.drakomme, src, work, "case%d" % n)
         if words is None:
             print("FAIL case %d: assembler error\n%s\n%s" % (n, src, err))
             fails += 1
@@ -175,7 +175,7 @@ def main():
                 fails += 1
 
     for n, (src, msg) in enumerate(ERRORS):
-        words, err = assemble(args.dekomme, src, work, "err%d" % n)
+        words, err = assemble(args.drakomme, src, work, "err%d" % n)
         if words is not None or msg not in err:
             print("FAIL error case %d: expected '%s', got %s\n%s" % (
                 n, msg, "success" if words is not None else repr(err), src))

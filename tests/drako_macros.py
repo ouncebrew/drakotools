@@ -2,7 +2,7 @@
 """Behavioural test for drako3d's tu104 MME macros.
 
 Usage: drako_macros.py --drako DRAKO3D_DIR --sim TU104_SIM
-                       [--dekomme PATH] [--dekodef PATH] [-v]
+                       [--drakomme PATH] [--drakodef PATH] [-v]
 """
 import argparse
 import os
@@ -19,9 +19,9 @@ def build(args, tmp):
     amp = os.path.join(args.drako, "source", "ampere")
     sym = os.path.join(tmp, "engine_3d.mme")
     hdr = os.path.join(tmp, "mme_macros.h")
-    subprocess.run([args.dekodef, "-h", os.path.join(tmp, "engine_3d.h"), "-m", sym,
+    subprocess.run([args.drakodef, "-h", os.path.join(tmp, "engine_3d.h"), "-m", sym,
                     os.path.join(amp, "engine_3d.def")], check=True)
-    subprocess.run([args.dekomme, "--isa=turing", "-o", hdr, sym] +
+    subprocess.run([args.drakomme, "--isa=turing", "-o", hdr, sym] +
                    [os.path.join(amp, f) for f in MME_FILES], check=True)
     text = open(hdr).read()
     slots = {m.group(1): (int(m.group(2), 16) - 0xE00) // 2
@@ -270,8 +270,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--drako", required=True)
     ap.add_argument("--sim", required=True)
-    ap.add_argument("--dekomme", default=os.path.join(HERE, "..", "build", "dekomme"))
-    ap.add_argument("--dekodef", default=os.path.join(HERE, "..", "build", "dekodef"))
+    ap.add_argument("--drakomme", default=os.path.join(HERE, "..", "build", "drakomme"))
+    ap.add_argument("--drakodef", default=os.path.join(HERE, "..", "build", "drakodef"))
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()
 

@@ -2,7 +2,7 @@
 inc = include_directories('.')
 
 drakomme_files = files(
-	'dekomme.cpp',
+	'drakomme.cpp',
 	'MmeDocument.cpp',
 	'MmeTuringDocument.cpp',
 )
@@ -12,7 +12,7 @@ drakomme_files += bison.process('MmeTuringParser.ypp')
 drakomme_files += flex.process('MmeTuringLexer.lpp')
 
 drakodef_files = files(
-	'dekodef.cpp',
+	'drakodef.cpp',
 	'DefDocument.cpp',
 	'DefBackendCpp.cpp',
 	'DefBackendMme.cpp',
