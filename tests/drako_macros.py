@@ -149,15 +149,24 @@ def draw_loop(begin, count_mthd, count, instances):
 
 def test_draws(r):
     prim = 0x4
-    r.check("Draw single", "Draw", [prim, 3, 1, 5, 0],
-            [(DrawArraysFirst, 5), (DrawBaseInstance, 0)] + draw_loop(prim, DrawArraysCount, 3, 1))
+    r.check("Draw single", "Draw", [prim, 3, 1, 0, 0],
+            [(DrawArraysFirst, 0), (DrawBaseInstance, 0)] + draw_loop(prim, DrawArraysCount, 3, 1))
+    r.check("Draw first vertex", "Draw", [prim, 3, 1, 5, 0],
+            [(DrawArraysFirst, 5), (DrawBaseInstance, 0),
+             (LoadConstbufOffset, CbufBaseInstance), (LoadConstbufData, 0), (LoadConstbufData + 1, 0),
+             (LoadConstbufData + 2, 5)] +
+            draw_loop(prim, DrawArraysCount, 3, 1) +
+            [(LoadConstbufOffset, CbufBaseInstance), (LoadConstbufData, 0), (LoadConstbufData + 1, 0),
+             (LoadConstbufData + 2, 0)])
     r.check("Draw instanced", "Draw", [prim, 6, 3, 0, 0],
             [(DrawArraysFirst, 0), (DrawBaseInstance, 0)] + draw_loop(prim, DrawArraysCount, 6, 3))
     r.check("Draw base instance", "Draw", [prim | (3 << 26), 6, 2, 1, 7],
             [(DrawArraysFirst, 1), (DrawBaseInstance, 7),
-             (LoadConstbufOffset, CbufBaseInstance), (LoadConstbufData, 7)] +
+             (LoadConstbufOffset, CbufBaseInstance), (LoadConstbufData, 7), (LoadConstbufData + 1, 0),
+             (LoadConstbufData + 2, 1)] +
             draw_loop(prim | (3 << 26), DrawArraysCount, 6, 2) +
-            [(LoadConstbufOffset, CbufBaseInstance), (LoadConstbufData, 0)])
+            [(LoadConstbufOffset, CbufBaseInstance), (LoadConstbufData, 0), (LoadConstbufData + 1, 0),
+             (LoadConstbufData + 2, 0)])
     r.check("Draw zero instances", "Draw", [prim, 3, 0, 5, 9], [(DrawArraysFirst, 5)])
 
     r.check("DrawIndexed single", "DrawIndexed", [prim, 36, 1, 10, 0, 0],
@@ -166,10 +175,11 @@ def test_draws(r):
             [(DrawBaseVertex, 0), (VertexIdBase, 0)])
     r.check("DrawIndexed base vertex/instance", "DrawIndexed", [prim, 36, 2, 10, 100, 3],
             [(DrawElementsFirst, 10), (DrawBaseVertex, 100), (DrawBaseInstance, 3), (VertexIdBase, 100),
-             (LoadConstbufOffset, CbufBaseVertex), (LoadConstbufData, 100), (LoadConstbufData + 1, 3)] +
+             (LoadConstbufOffset, CbufBaseVertex), (LoadConstbufData, 100), (LoadConstbufData + 1, 3),
+             (LoadConstbufData + 2, 0), (LoadConstbufData + 3, 100)] +
             draw_loop(prim, DrawElementsCount, 36, 2) +
             [(LoadConstbufOffset, CbufBaseVertex), (LoadConstbufData, 0), (LoadConstbufData + 1, 0),
-             (DrawBaseVertex, 0), (VertexIdBase, 0)])
+             (LoadConstbufData + 2, 0), (LoadConstbufData + 3, 0), (DrawBaseVertex, 0), (VertexIdBase, 0)])
     r.check("DrawIndexed zero instances", "DrawIndexed", [prim, 36, 0, 10, 100, 3], [(DrawElementsFirst, 10)])
 
 
